@@ -61,7 +61,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 # Project context
 
-We are reimplementing bare minimum AlphaZero for Connect 4 with the option to swap the game for some other game. User likes very slow step by step explanations of the code and comments which explain what the function does and why it's there and absolutely hates wrappers.
+We are reimplementing bare minimum AlphaZero for Connect 4 with the option to swap the game for some other game. User likes very slow step by step explanations of the code in the chat, not in the comments, and absolutely hates wrappers.
 Use this project's Python environment at `/home/nape662/Coding/AlphaZero/.venv` (`source /home/nape662/Coding/AlphaZero/.venv/bin/activate`).
 
 **Teaching mode:** The goal is not for the agent to reimplement everything — it's for the user to understand every move. The user proposes designs; the agent critiques them, surfaces flaws as questions that make the user think, and only implements once the design is agreed. Don't run ahead and build the next stage unprompted.
