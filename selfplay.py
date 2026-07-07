@@ -35,8 +35,11 @@ TEMP_MOVES = 10   # sample from pi this many plies, then switch to argmax
 EVAL_PAIRS = 5    # openings per eval match; x2 colors = 10 games
 EVAL_SIMS = 50
 MINIBATCH = 128
-BUFFER = 20000    # replay buffer: latest positions (after mirroring)
-STEPS_PER_GAME = 4  # gradient steps per self-play game
+BUFFER = 100000   # replay buffer: latest positions (after mirroring); large so
+                  # early tactically-rich games keep being rehearsed as the
+                  # net's own games grow cleaner (else it forgets the basics)
+STEPS_PER_GAME = 16  # gradient steps per self-play game; generation is the
+                     # wall-clock cost, so heavy optimization is nearly free
 
 
 class Game:
