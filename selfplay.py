@@ -20,6 +20,7 @@ both as raw policy argmax and with a small MCTS, noise off.
 """
 
 import copy
+import multiprocessing as mp
 import pathlib
 import sys
 import time
@@ -113,6 +114,20 @@ def play_game(net, sims=800):
     return play_games(net, 1, sims, parallel=1)[0]
 
 
+_worker_net = None  # one lazily-built net per worker process
+
+
+def _worker_play(args):
+    """Runs in a spawned worker: rebuild the net once, load the latest
+    weights, and self-play a chunk of the wave."""
+    global _worker_net
+    state_dict, n_games, sims, parallel = args
+    if _worker_net is None:
+        _worker_net = PolicyValueNet().to(DEVICE)
+    _worker_net.load_state_dict(state_dict)
+    return play_games(_worker_net, n_games, sims, parallel)
+
+
 def pit(net_a, net_b, n_pairs=EVAL_PAIRS, sims=0):
     """Match net_a vs net_b, returns (a wins, draws, b wins).
 
@@ -181,7 +196,8 @@ def probe_accuracy(net, probes):
     return hits / len(probes)
 
 
-def train(n_games=1000, sims=800, lr=1e-3, parallel=64, eval_every=128, run=None):
+def train(n_games=1000, sims=800, lr=1e-3, parallel=64, eval_every=128, run=None,
+          workers=1):
     run = run or time.strftime("%m%d-%H%M%S")
     ckpt_dir = pathlib.Path("checkpoints") / run
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -190,11 +206,20 @@ def train(n_games=1000, sims=800, lr=1e-3, parallel=64, eval_every=128, run=None
     snapshot = copy.deepcopy(net)
     win_probes, block_probes = make_probes()
     optim = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=1e-4)
+    pool = mp.get_context("spawn").Pool(workers) if workers > 1 else None
     t0, done = time.time(), 0
     buf_x = buf_pi = buf_z = None
     while done < n_games:
-        wave = min(parallel, n_games - done)
-        games = play_games(net, wave, sims, parallel)
+        if pool:
+            wave = min(workers * parallel, n_games - done)
+            per = [wave // workers + (i < wave % workers) for i in range(workers)]
+            sd = {k: v.cpu() for k, v in net.state_dict().items()}
+            chunks = pool.map(_worker_play,
+                              [(sd, n, sims, parallel) for n in per if n])
+            games = [g for chunk in chunks for g in chunk]
+        else:
+            wave = min(parallel, n_games - done)
+            games = play_games(net, wave, sims, parallel)
 
         x = torch.stack([encode(s) for ss, _, _ in games for s in ss]).to(DEVICE)
         pi = torch.tensor(np.concatenate([ps for _, ps, _ in games]),
@@ -220,6 +245,7 @@ def train(n_games=1000, sims=800, lr=1e-3, parallel=64, eval_every=128, run=None
             optim.step()
 
         prev_done, done = done, done + wave
+        torch.save(net.state_dict(), ckpt_dir / "latest.pt")
         dt = time.time() - t0
         print(f"[{done}/{n_games}] {dt:.0f}s ({dt / done:.2f}s/game), "
               f"loss {loss.item():.3f}", flush=True)
@@ -232,6 +258,8 @@ def train(n_games=1000, sims=800, lr=1e-3, parallel=64, eval_every=128, run=None
                   f"block-in-1 {probe_accuracy(net, block_probes):.0%}", flush=True)
             snapshot = copy.deepcopy(net)
             torch.save(net.state_dict(), ckpt_dir / f"g{done:05d}.pt")
+    if pool:
+        pool.close()
     torch.save(net.state_dict(), ckpt_dir / f"g{done:05d}.pt")
     return net
 
