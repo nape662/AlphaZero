@@ -36,7 +36,7 @@ TEMP_MOVES = 10   # sample from pi this many plies, then switch to argmax
 EVAL_PAIRS = 5    # openings per eval match; x2 colors = 10 games
 EVAL_SIMS = 50
 MINIBATCH = 128
-BUFFER = 100000   # replay buffer: latest positions (after mirroring); large so
+BUFFER = 1000000  # replay buffer: latest positions (after mirroring); large so
                   # early tactically-rich games keep being rehearsed as the
                   # net's own games grow cleaner (else it forgets the basics)
 STEPS_PER_GAME = 16  # gradient steps per self-play game; generation is the
@@ -197,12 +197,14 @@ def probe_accuracy(net, probes):
 
 
 def train(n_games=1000, sims=800, lr=1e-3, parallel=64, eval_every=128, run=None,
-          workers=1):
+          workers=1, resume=None):
     run = run or time.strftime("%m%d-%H%M%S")
     ckpt_dir = pathlib.Path("checkpoints") / run
     ckpt_dir.mkdir(parents=True, exist_ok=True)
-    print(f"device: {DEVICE} | run: {run}")
+    print(f"device: {DEVICE} | run: {run}" + (f" | resume: {resume}" if resume else ""))
     net = PolicyValueNet().to(DEVICE)
+    if resume:  # weights only: buffer, optimizer state and game count start fresh
+        net.load_state_dict(torch.load(resume, map_location=DEVICE))
     snapshot = copy.deepcopy(net)
     win_probes, block_probes = make_probes()
     optim = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=1e-4)
@@ -265,5 +267,7 @@ def train(n_games=1000, sims=800, lr=1e-3, parallel=64, eval_every=128, run=None
 
 
 if __name__ == "__main__":
-    train(n_games=1000, sims=100, parallel=64, eval_every=128,
-          run=sys.argv[1] if len(sys.argv) > 1 else None)
+    # python selfplay.py [run_name] [resume_checkpoint.pt]
+    train(n_games=10000, sims=100, parallel=64, eval_every=1000, workers=6,
+          run=sys.argv[1] if len(sys.argv) > 1 else None,
+          resume=sys.argv[2] if len(sys.argv) > 2 else None)
