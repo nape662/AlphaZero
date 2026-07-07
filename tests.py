@@ -5,7 +5,7 @@ import torch
 
 from connect4 import FULL, INITIAL, has_won, legal_moves, play, terminal_value
 from mcts import mcts
-from net import PolicyValueNet
+from net import DEVICE, PolicyValueNet
 
 
 def bit(col, row):
@@ -66,7 +66,7 @@ def test_draw():
 def _net():
     torch.manual_seed(0)
     np.random.seed(0)
-    return PolicyValueNet()
+    return PolicyValueNet().to(DEVICE)
 
 
 def test_mcts_pi_is_distribution():
