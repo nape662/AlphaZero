@@ -95,6 +95,15 @@ def terminal_value(state):
     return None
 
 
+def winning_moves(state):
+    """Legal moves that win on the spot for the player to move.
+
+    A winning move shows as terminal_value == -1 because `play` flips the
+    perspective: the new "current" player is the one who just got beaten.
+    """
+    return [a for a in legal_moves(state) if terminal_value(play(state, a)) == -1]
+
+
 def render(state, to_move="X"):
     """ASCII board, top row first. `to_move` is the mark of the player to move."""
     current, opponent = state

@@ -28,7 +28,7 @@ import time
 import numpy as np
 import torch
 
-from connect4 import NUM_ACTIONS, INITIAL, legal_moves, play, terminal_value
+from connect4 import NUM_ACTIONS, INITIAL, legal_moves, play, terminal_value, winning_moves
 from mcts import Node, add_noise, backprop, descend, mcts, set_prior
 from net import DEVICE, PolicyValueNet, encode
 
@@ -46,7 +46,6 @@ STEPS_PER_GAME = 16  # gradient steps per self-play game; generation is the
 class Game:
     def __init__(self):
         self.root = Node(INITIAL)
-        self.sims_done = 0
         self.states, self.pis = [], []
 
 
@@ -68,7 +67,6 @@ def play_games(net, n_games, sims, parallel=64):
                 requests.append((g, [], g.root))
                 continue
             request = descend(g.root)
-            g.sims_done += 1
             if request is not None:
                 requests.append((g, *request))
 
@@ -86,8 +84,9 @@ def play_games(net, n_games, sims, parallel=64):
                 backprop(path, float(v))
 
         # 3) games whose search is done play their move
+        # (every completed sim backprops through the root, so N.sum() counts them)
         for g in pool[:]:
-            if g.sims_done < sims:
+            if g.root.N.sum() < sims:
                 continue
             pi = g.root.N / g.root.N.sum()
             g.states.append(g.root.state)
@@ -100,18 +99,12 @@ def play_games(net, n_games, sims, parallel=64):
             tv = terminal_value(state)
             if tv is None:
                 g.root = Node(state)
-                g.sims_done = 0
             else:
                 # tv is from the final position's perspective; flip per ply back
                 zs = [tv * (-1) ** (len(g.states) - i) for i in range(len(g.states))]
                 finished.append((g.states, g.pis, zs))
                 pool.remove(g)
     return finished
-
-
-def play_game(net, sims=800):
-    """One self-play game. Returns (states, pis, zs), one entry per ply."""
-    return play_games(net, 1, sims, parallel=1)[0]
 
 
 _worker_net = None  # one lazily-built net per worker process
@@ -149,9 +142,9 @@ def pit(net_a, net_b, n_pairs=EVAL_PAIRS, sims=0):
                     col = int(np.argmax(mcts(state, net, sims, noise=False)))
                 else:
                     with torch.no_grad():
-                        probs, _ = net(encode(state).to(DEVICE))
+                        probs, _ = net(encode(state)[None].to(DEVICE))
                     legal = legal_moves(state)
-                    col = legal[int(np.argmax(probs.cpu().numpy()[legal]))]
+                    col = legal[int(np.argmax(probs[0].cpu().numpy()[legal]))]
                 state = play(state, col)
                 a_to_move = not a_to_move
             if terminal_value(state) == 0:
@@ -174,9 +167,8 @@ def make_probes(n=100, seed=0):
         state = INITIAL
         while terminal_value(state) is None:
             legal = legal_moves(state)
-            wins = [a for a in legal if terminal_value(play(state, a)) == -1]
-            threats = [a for a in legal
-                       if terminal_value(play((state[1], state[0]), a)) == -1]
+            wins = winning_moves(state)
+            threats = winning_moves((state[1], state[0]))  # opponent's wins if it were their turn
             if wins and len(win_probes) < n:
                 win_probes.append((state, wins))
             elif not wins and len(threats) == 1 and len(block_probes) < n:

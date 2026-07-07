@@ -88,8 +88,8 @@ def add_noise(root):
 def evaluate(node, net):
     """Single-position net call: fill node.P, return the value."""
     with torch.no_grad():
-        probs, value = net(encode(node.state).to(DEVICE))
-    set_prior(node, probs.cpu().numpy())
+        probs, value = net(encode(node.state)[None].to(DEVICE))
+    set_prior(node, probs[0].cpu().numpy())
     return value.item()
 
 

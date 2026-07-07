@@ -12,6 +12,7 @@ Heads as in the paper:
             player to move
 """
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -19,19 +20,16 @@ from connect4 import ROWS, COLS, NUM_ACTIONS
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# bit index of each cell, laid out as the (row, col) grid encode produces
+BIT_INDEX = np.array([[7 * col + row for col in range(COLS)] for row in range(ROWS)],
+                     dtype=np.uint64)
+
 
 def encode(state):
     """Bitboards -> two 6x7 planes: current player's pieces, opponent's."""
-    current, opponent = state
-    planes = torch.zeros(2, ROWS, COLS)
-    for col in range(COLS):
-        for row in range(ROWS):
-            bit = 1 << (7 * col + row)
-            if current & bit:
-                planes[0, row, col] = 1.0
-            elif opponent & bit:
-                planes[1, row, col] = 1.0
-    return planes
+    boards = np.asarray(state, dtype=np.uint64)
+    planes = (boards[:, None, None] >> BIT_INDEX) & np.uint64(1)
+    return torch.from_numpy(planes.astype(np.float32))
 
 
 class PolicyValueNet(nn.Module):
@@ -52,12 +50,7 @@ class PolicyValueNet(nn.Module):
         )
 
     def forward(self, x):
-        single = x.dim() == 3
-        if single:
-            x = x.unsqueeze(0)
         h = self.trunk(x)
         probs = torch.softmax(self.policy_head(h), dim=-1)
         value = torch.tanh(self.value_head(h))
-        if single:
-            probs, value = probs.squeeze(0), value.squeeze(0)
         return probs, value

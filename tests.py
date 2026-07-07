@@ -94,9 +94,9 @@ def test_mcts_blocks_win_in_1():
 
 
 def test_selfplay_z_perspective():
-    from selfplay import play_game
+    from selfplay import play_games
 
-    states, pis, zs = play_game(_net(), sims=25)
+    states, pis, zs = play_games(_net(), 1, sims=25, parallel=1)[0]
     assert len(states) == len(pis) == len(zs)
     if zs[-1] != 0:
         # the last player to move can only have won ("you can't lose

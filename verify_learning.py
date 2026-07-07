@@ -8,20 +8,15 @@ Tests, in order of what they prove:
   V4 off-distribution tactics - generalization to random-play positions
 Verdicts printed at the end.
 """
-import sys
-sys.path.insert(0, "/home/nape662/Coding/AlphaZero")
-
 import pathlib
+import sys
 
-import numpy as np
-import torch
-
-from connect4 import legal_moves, play, terminal_value
+from connect4 import winning_moves
 from checkpoints import load
 from selfplay import make_probes, probe_accuracy, play_games, pit
 
 run = sys.argv[1] if len(sys.argv) > 1 else "v2"
-ckpts = sorted(pathlib.Path(f"/home/nape662/Coding/AlphaZero/checkpoints/{run}").glob("*.pt"))
+ckpts = sorted((pathlib.Path("checkpoints") / run).glob("g*.pt"))
 early, mid, final = ckpts[0], ckpts[len(ckpts) // 2], ckpts[-1]
 print(f"run {run}: early={early.name} mid={mid.name} final={final.name}\n")
 net_e, net_m, net_f = load(early), load(mid), load(final)
@@ -43,7 +38,7 @@ games = play_games(net_f, 64, sims=200)
 own = []
 for ss, _, _ in games:
     for s in ss:
-        wins = [a for a in legal_moves(s) if terminal_value(play(s, a)) == -1]
+        wins = winning_moves(s)
         if wins:
             own.append((s, wins))
 on_acc = probe_accuracy(net_f, own) if own else float("nan")
